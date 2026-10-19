@@ -17,7 +17,6 @@ h1{margin:0;font-weight:800;font-size:clamp(28px,5vw,40px);letter-spacing:-.02em
 .sub{color:var(--mute);margin:4px 0 0;font-size:14px}
 .filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
 .filters label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute);font-weight:600}
-.filters .pair{display:flex;gap:8px;align-items:flex-end}
 select,input[type=date],button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:40px}
 button{cursor:pointer;font-weight:600}
 button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -53,28 +52,16 @@ td.mid{background:var(--mid-bg);color:var(--mid)}
 td.low{background:var(--low-bg);color:var(--low)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-top:8px}
 .legend b{display:inline-block;min-width:22px;text-align:center;border-radius:4px;margin-right:4px}
-/* tendencias */
+/* tendencias / conteo */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.card h3{margin:0;font-size:14px;font-weight:600;color:var(--mute)}
-.val{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 14px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.card h3{margin:0 0 6px 0;font-size:14px;font-weight:600;color:var(--mute)}
+.val{font-size:32px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .val small{font-size:13px;font-weight:600;margin-left:6px}
 .up{color:var(--ok)}.down{color:var(--low)}
-.card svg{width:100%;height:64px;display:block;margin-top:4px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
 .lg{font-size:12px;color:var(--mute);margin-top:2px}
-/* ventas */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
-.kpis .val{font-size:24px}
-.bars{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
-.row{display:grid;grid-template-columns:90px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:center}
-.row:last-child{border:0}
-.row .d{font-weight:600;font-size:13px}.row .d small{display:block;color:var(--mute);font-weight:400}
-.bar{display:flex;align-items:center;gap:8px;font-size:12px;margin:2px 0}
-.bar i{display:block;height:10px;border-radius:3px;background:var(--acc);min-width:2px}
-.bar.e i{background:var(--mid)}
-.bar span{white-space:nowrap;color:var(--mute)}
-@media(max-width:520px){.filters,.filters label,.filters .pair{width:100%}.filters .pair label{flex:1}select{width:100%}}
+@media(max-width:520px){.filters,.filters label{width:100%}select{width:100%}}
 </style>
 </head>
 <body>
@@ -89,10 +76,9 @@ td.low{background:var(--low-bg);color:var(--low)}
     <label>Tienda
       <select id="store"><option value="">Todas las tiendas</option></select>
     </label>
-    <div class="pair">
-      <label>Fecha desde <input type="date" id="from"></label>
-      <label>hasta <input type="date" id="to"></label>
-    </div>
+    <label>Fecha
+      <input type="date" id="date">
+    </label>
     <button id="reset" type="button">Ver todo</button>
     <button id="refresh" type="button" class="primary">Actualizar</button>
   </div>
@@ -104,17 +90,15 @@ td.low{background:var(--low-bg);color:var(--low)}
   <div class="body"></div>
 </section>
 
-<section id="matrix">
-  <h2>Nivel de insumos<small>Últimos 14 cierres</small></h2>
-  <div class="body"></div>
-</section>
-
 <section id="trends">
   <h2>Conteo de insumos<small>Evolución por cierre</small></h2>
   <div class="body"></div>
 </section>
 
-
+<section id="matrix">
+  <h2>Nivel de insumos<small>Últimos 14 cierres</small></h2>
+  <div class="body"></div>
+</section>
 
 </div>
 
@@ -132,12 +116,11 @@ const iso = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') 
 const fd = d => d.toLocaleDateString('es-CO', {day:'numeric', month:'short'}).replace('.', '');
 const lvl = v => { v = (v||'').toLowerCase().trim(); return v.startsWith('muy') ? 'low' : v.startsWith('suf') ? 'ok' : v.startsWith('norm') ? 'mid' : ''; };
 const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
-const money = n => '$' + Math.round(n).toLocaleString('es-CO');
 const pick = (t, w) => { const m = String(t).match(new RegExp(w + '\\s*:?\\s*\\$?\\s*([\\d.,]+)', 'i')); return m ? parseInt(m[1].replace(/[.,]/g, ''), 10) : null; };
 const COLORS = ['#2F6F8F', '#7A4FA3', '#B07A00', '#3F7D4E', '#B02F20'];
 const M = {counts: [], quals: [], recs: [], stores: []};
 
-/* --- Carga de datos (JSONP: funciona también abriendo el HTML como archivo) --- */
+/* --- Carga de datos --- */
 function load() {
   return new Promise((res, rej) => {
     const cb = 'cb' + Date.now(), s = document.createElement('script');
@@ -181,14 +164,14 @@ function fillFilters() {
   sel.innerHTML = '<option value="">Todas las tiendas</option>' + M.stores.map(s => `<option>${esc(s)}</option>`).join('');
   sel.value = M.stores.includes(cur) ? cur : '';
   if (M.recs.length) {
-    $('#from').min = $('#to').min = iso(M.recs[0].date);
-    $('#from').max = $('#to').max = iso(M.recs[M.recs.length-1].date);
+    $('#date').min = iso(M.recs[0].date);
+    $('#date').max = iso(M.recs[M.recs.length-1].date);
   }
 }
 
 const view = () => {
-  const s = $('#store').value, f = $('#from').value, t = $('#to').value;
-  return M.recs.filter(x => (!s || x.store === s) && (!f || iso(x.date) >= f) && (!t || iso(x.date) <= t));
+  const s = $('#store').value, d = $('#date').value;
+  return M.recs.filter(x => (!s || x.store === s) && (!d || iso(x.date) === d));
 };
 const empty = (id, msg) => { $('#' + id + ' .body').innerHTML = `<div class="empty">${msg}</div>`; };
 
@@ -206,7 +189,28 @@ function renderAlerts(v) {
   $('#alerts .body').innerHTML = `<div class="stores">${h}</div>`;
 }
 
-/* --- Semáforo --- */
+/* --- Conteo de insumos (centrado y sin punto SVG) --- */
+function renderTrends(v) {
+  const dates = [...new Set(v.map(x => iso(x.date)))], stores = [...new Set(v.map(x => x.store))];
+  let h = '';
+  M.counts.forEach(c => {
+    const ser = stores.map((s, si) => ({s, si, pts: v.filter(x => x.store === s).map(x => ({i: dates.indexOf(iso(x.date)), v: num(x.r[c.k])})).filter(p => p.v !== null)})).filter(s => s.pts.length);
+    if (!ser.length) return;
+    
+    let top;
+    if (ser.length === 1) {
+      const p = ser[0].pts, l = p[p.length-1].v, d = p.length > 1 ? l - p[p.length-2].v : null;
+      top = `<div class="val">${l}${d ? `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</small>` : ''}</div>`;
+    } else {
+      top = `<div class="lg">${ser.map(s => `<span class="dot" style="background:${COLORS[s.si % COLORS.length]}"></span>${esc(s.s)}: <b>${s.pts[s.pts.length-1].v}</b>`).join(' &nbsp; ')}</div>`;
+    }
+    h += `<div class="card"><h3>${esc(c.label)}</h3>${top}</div>`;
+  });
+  if (!h) return empty('trends', 'No hay conteos registrados en este periodo.');
+  $('#trends .body').innerHTML = `<div class="grid">${h}</div>`;
+}
+
+/* --- Semáforo (Nivel de insumos) --- */
 function renderMatrix(v) {
   const cols = v.slice(-14), multi = M.stores.length > 1 && !$('#store').value, g = {ok: '✓', mid: '–', low: '!'}, names = {ok: 'Suficiente', mid: 'Normal', low: 'Muy poco'};
   const rows = M.quals.filter(q => cols.some(x => lvl(x.r[q.k])))
@@ -218,39 +222,10 @@ function renderMatrix(v) {
     `</tbody></table></div><div class="legend"><span><b class="ok" style="background:var(--ok-bg);color:var(--ok)">✓</b>Suficiente</span><span><b style="background:var(--mid-bg);color:var(--mid)">–</b>Normal</span><span><b style="background:var(--low-bg);color:var(--low)">!</b>Muy poco</span></div>`;
 }
 
-/* --- Tendencias --- */
-function renderTrends(v) {
-  const dates = [...new Set(v.map(x => iso(x.date)))], stores = [...new Set(v.map(x => x.store))];
-  const X = i => dates.length > 1 ? 8 + i * (204 / (dates.length - 1)) : 110;
-  let h = '';
-  M.counts.forEach(c => {
-    const ser = stores.map((s, si) => ({s, si, pts: v.filter(x => x.store === s).map(x => ({i: dates.indexOf(iso(x.date)), v: num(x.r[c.k])})).filter(p => p.v !== null)})).filter(s => s.pts.length);
-    if (!ser.length) return;
-    const all = ser.flatMap(s => s.pts.map(p => p.v)), mn = Math.min(...all), mx = Math.max(...all);
-    const Y = y => mx === mn ? 32 : 56 - ((y - mn) / (mx - mn)) * 48;
-    const svg = ser.map(s => {
-      const col = COLORS[s.si % COLORS.length];
-      return `<polyline fill="none" stroke="${col}" stroke-width="2" points="${s.pts.map(p => X(p.i).toFixed(1) + ',' + Y(p.v).toFixed(1)).join(' ')}"/>` +
-        s.pts.map(p => `<circle cx="${X(p.i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3" fill="${col}"><title>${esc(s.s)} · ${dates[p.i]}: ${p.v}</title></circle>`).join('');
-    }).join('');
-    let top;
-    if (ser.length === 1) {
-      const p = ser[0].pts, l = p[p.length-1].v, d = p.length > 1 ? l - p[p.length-2].v : null;
-      top = `<div class="val">${l}${d ? `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</small>` : ''}</div>`;
-    } else {
-      top = `<div class="lg">${ser.map(s => `<span class="dot" style="background:${COLORS[s.si % COLORS.length]}"></span>${esc(s.s)}: <b>${s.pts[s.pts.length-1].v}</b>`).join(' &nbsp; ')}</div>`;
-    }
-    h += `<div class="card"><h3>${esc(c.label)}</h3>${top}<svg viewBox="0 0 220 64" preserveAspectRatio="none" role="img" aria-label="Evolución de ${esc(c.label)}">${svg}</svg></div>`;
-  });
-  if (!h) return empty('trends', 'No hay conteos registrados en este periodo.');
-  $('#trends .body').innerHTML = `<div class="grid">${h}</div>`;
-}
-
-
 function render() {
   const v = view();
-  if (!v.length) { ['alerts', 'matrix', 'trends', 'sales'].forEach(id => empty(id, 'No hay cierres para esta tienda y fecha. Prueba con otro filtro.')); return; }
-  renderAlerts(v); renderMatrix(v); renderTrends(v); renderSales(v);
+  if (!v.length) { ['alerts', 'trends', 'matrix'].forEach(id => empty(id, 'No hay cierres para esta tienda y fecha. Prueba con otro filtro.')); return; }
+  renderAlerts(v); renderTrends(v); renderMatrix(v);
 }
 
 async function go() {
@@ -266,8 +241,8 @@ async function go() {
   } catch (e) { st.className = 'err'; st.textContent = e.message; }
 }
 
-['store', 'from', 'to'].forEach(id => $('#' + id).addEventListener('change', render));
-$('#reset').onclick = () => { $('#store').value = $('#from').value = $('#to').value = ''; render(); };
+['store', 'date'].forEach(id => $('#' + id).addEventListener('change', render));
+$('#reset').onclick = () => { $('#store').value = $('#date').value = ''; render(); };
 $('#refresh').onclick = go;
 go();
 </script>
