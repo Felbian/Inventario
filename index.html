@@ -175,20 +175,94 @@ const view = () => {
 };
 const empty = (id, msg) => { $('#' + id + ' .body').innerHTML = `<div class="empty">${msg}</div>`; };
 
-/* --- Por reponer --- */
+const REGLAS_REPOSICION = {
+  // Reglas por defecto para cualquier tienda no especificada
+  '*': {
+    'Pan': 10,
+    'Salsa': 2,
+    'Queso': 5
+  },
+  // Reglas específicas para la tienda "Plaza 111"
+  'Plaza 111': {
+    'Pan': 15,
+    'Queso': 8,
+    'Papas': 3
+  },
+  // Reglas para la tienda "Natura"
+  'Natura': {
+    'Pan': 8,
+    'Salsa': 1,
+    'Queso': 4
+  },
+  // Reglas para la tienda "Vivero"
+  'Vivero': {
+    'Pan': 12,
+    'Queso': 6
+  }
+};
+/* ======================================= */
+
+/* --- Por reponer (Con filtros de stock mínimo y niveles de alerta) --- */
 function renderAlerts(v) {
-  const last = new Map(); v.forEach(x => last.set(x.store, x));
+  const last = new Map(); 
+  v.forEach(x => last.set(x.store, x));
+  
   let h = '';
+  
   last.forEach(x => {
-    const low = M.quals.filter(q => lvl(x.r[q.k]) === 'low');
-    const mid = M.quals.filter(q => lvl(x.r[q.k]) === 'mid').length;
-    h += `<article class="store ${low.length ? '' : 'clear'}"><header><h3>${esc(x.store)}</h3><span>Cierre del ${fd(x.date)}</span></header>` +
-      (low.length ? `<ul class="chips">${low.map(q => `<li>${esc(q.label)}</li>`).join('')}</ul>` : '<p class="okmsg">Nada en nivel muy poco.</p>') +
-      `<p class="note">${low.length} en muy poco · ${mid} en normal</p></article>`;
+    // 1. Alertas Cualitativas (Marcadas como 'Muy poco')
+    const lowQuals = M.quals
+      .filter(q => lvl(x.r[q.k]) === 'low')
+      .map(q => ({ label: q.label, motivo: 'Nivel bajo' }));
+
+    // 2. Alertas Cuantitativas (Conteo numérico <= Mínimo permitido)
+    const reglasTienda = REGLAS_REPOSICION[x.store] || REGLAS_REPOSICION['*'] || {};
+    const lowCounts = [];
+
+    M.counts.forEach(c => {
+      const cantidad = num(x.r[c.k]);
+      if (cantidad === null) return;
+
+      // Buscar si el producto tiene una regla de mínimo configurada
+      const minimoConfigurado = Object.entries(reglasTienda).find(([key]) => 
+        c.label.toLowerCase().includes(key.toLowerCase())
+      );
+
+      if (minimoConfigurado) {
+        const [nombreRegla, minVal] = minimoConfigurado;
+        if (cantidad <= minVal) {
+          // Evitar duplicar si ya fue incluido en la evaluación cualitativa
+          const yaExiste = lowQuals.some(q => q.label.toLowerCase() === c.label.toLowerCase());
+          if (!yaExiste) {
+            lowCounts.push({
+              label: `${c.label} (${cantidad} rest. / mín: ${minVal})`,
+              motivo: 'Stock bajo'
+            });
+          }
+        }
+      }
+    });
+
+    // Combinar ambos tipos de alertas
+    const todasAlertas = [...lowQuals, ...lowCounts];
+    const totalLow = todasAlertas.length;
+    const midCount = M.quals.filter(q => lvl(x.r[q.k]) === 'mid').length;
+
+    h += `<article class="store ${totalLow ? '' : 'clear'}">
+      <header>
+        <h3>${esc(x.store)}</h3>
+        <span>Cierre del ${fd(x.date)}</span>
+      </header>` +
+      (totalLow 
+        ? `<ul class="chips">${todasAlertas.map(item => `<li>${esc(item.label)}</li>`).join('')}</ul>` 
+        : '<p class="okmsg">Inventario en orden (Sin faltantes).</p>') +
+      `<p class="note">${totalLow} para reponer · ${midCount} en nivel normal</p>
+    </article>`;
   });
+
+  if (!h) return empty('alerts', 'No hay datos de cierres para las tiendas seleccionadas.');
   $('#alerts .body').innerHTML = `<div class="stores">${h}</div>`;
 }
-
 /* --- Conteo de insumos (centrado y sin punto SVG) --- */
 function renderTrends(v) {
   const dates = [...new Set(v.map(x => iso(x.date)))], stores = [...new Set(v.map(x => x.store))];
